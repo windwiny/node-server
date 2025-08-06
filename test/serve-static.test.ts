@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import request from 'supertest'
+import fs from 'node:fs';
 import path from 'node:path'
 import { serveStatic } from './../src/serve-static'
 import { createAdaptorServer } from './../src/server'
@@ -21,6 +22,8 @@ describe('Serve Static Middleware', () => {
     })
   )
   app.use('/favicon.ico', serveStatic({ path: './test/assets/favicon.ico' }))
+  app.use('/test304', serveStatic({ path: './test/assets/favicon.ico', useCache: true, }))
+  const stat1 = fs.statSync('./test/assets/favicon.ico')
   app.use(
     '/dot-static/*',
     serveStatic({
@@ -109,6 +112,20 @@ describe('Serve Static Middleware', () => {
     expect(res.status).toBe(404)
     expect(res.headers['content-type']).toBe('text/plain; charset=UTF-8')
     expect(res.text).toBe('404 Not Found')
+  })
+
+  it('Should return 304 when useCache', async () => {
+    const etag = 'W/"' + stat1.size.toString(16) + '"'
+    const lm = stat1.mtime.toUTCString()
+
+    const res = await request(server).get('/test304')
+    expect(res.status).toBe(200)
+    expect(res.headers['etag']).toBe(etag)
+    expect(res.headers['last-modified']).toBe(lm)
+
+    const res2 = await request(server).get('/test304').set('If-Modified-Since', lm).set('If-None-Match', etag)
+    expect(res2.status).toBe(304)
+    expect(res2.headers['content-length']).toBe('0')
   })
 
   it('Should return 200 with rewriteRequestPath', async () => {

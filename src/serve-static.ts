@@ -15,6 +15,7 @@ export type ServeStaticOptions<E extends Env = Env> = {
   rewriteRequestPath?: (path: string, c: Context<E>) => string
   onFound?: (path: string, c: Context<E>) => void | Promise<void>
   onNotFound?: (path: string, c: Context<E>) => void | Promise<void>
+  useCache?: boolean
 }
 
 const COMPRESSIBLE_CONTENT_TYPE_REGEX =
@@ -132,6 +133,18 @@ export const serveStatic = <E extends Env = any>(
       c.header('Content-Length', size.toString())
       c.status(200)
       return c.body(null)
+    }
+
+    if (options.useCache) {
+      const etag = 'W/"' + stats.size.toString(16) + '"'
+      const lm = stats.mtime.toUTCString()
+      if(c.req.header('If-Modified-Since') === lm && c.req.header('If-None-Match') === etag) {
+        c.status(304)
+        return c.text('')
+      }
+      c.header('ETag', etag)
+      c.header('Last-Modified', lm);
+      c.header('Cache-Control', 'public, max-age=0')
     }
 
     const range = c.req.header('range') || ''
